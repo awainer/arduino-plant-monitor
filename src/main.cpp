@@ -4,9 +4,11 @@
 #include "wifi_psk.h"
 #include "mqtt.h"
 
-#define SLEEP_INTERVAL 10e06 // seconds 
 
- int readValue;
+
+ int humidityLevel;
+ int waterLevel;
+
  WiFiClient espClient;
 
  PubSubClient client(espClient);
@@ -16,11 +18,15 @@ void wifi_connect();
 
 char buffer[10];
 
+void serialDump();
+void water();
 
 void setup() {
- Serial.begin(9600);
+  Serial.begin(9600);
+  pinMode(WATER_SENSOR_PIN, INPUT);
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, 1);
   wifi_connect();
-  
   client.setServer(MQTT_ADDRESS, MQTT_PORT);
   mqtt_reconnect();
 }
@@ -64,10 +70,37 @@ void mqtt_reconnect() {
 
 
 void loop() {
-  readValue = analogRead(0);
-  Serial.println(readValue);
-  client.publish(MQTT_TOPIC, itoa(readValue,buffer, 10));
-  // Allow the message to be sent before going to sleep
-  delay(2000);
-  ESP.deepSleep(SLEEP_INTERVAL); 
+  humidityLevel = analogRead(0);
+  waterLevel = 1 - digitalRead(WATER_SENSOR_PIN);
+
+  serialDump();
+  client.publish(MQTT_TOPIC_HUMIDITY,  itoa(humidityLevel,buffer, 10));
+  client.publish(MQTT_TOPIC_TANK_1_LEVEL, itoa(waterLevel, buffer, 10));
+  delay(5000);
+  if (humidityLevel > HUMIDITY_THRESHOLD){
+    if (waterLevel > 0){
+      water();
+    } else {
+      Serial.println("Tank is empty");
+    }
+  }
+}
+
+void water(){
+  digitalWrite(PUMP_PIN, 0);
+  Serial.println("Begin watering.");
+  client.publish(MQTT_PUMP_1_TOPIC, "1");
+  delay(5000);
+  digitalWrite(PUMP_PIN, 1);
+  Serial.println("End watering");
+  client.publish(MQTT_PUMP_1_TOPIC, "0");
+}
+
+void serialDump(){
+  Serial.print("Water level: ");
+  Serial.flush();
+  Serial.println(waterLevel);
+  Serial.print("Humidity level: ");
+  Serial.flush();
+  Serial.println(humidityLevel);
 }
