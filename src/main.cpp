@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 #include <PubSubClient.h>
 #include "wifi_psk.h"
 #include "mqtt.h"
@@ -26,6 +28,31 @@ void setup() {
   pinMode(WATER_SENSOR_PIN, INPUT);
   pinMode(PUMP_PIN, OUTPUT);
   digitalWrite(PUMP_PIN, 1);
+  if (!MDNS.begin(MDNS_NAME)) {
+    Serial.println("Error setting up MDNS responder!");
+  } else
+  {
+      Serial.println("mDNS responder started");
+  }
+  
+  ArduinoOTA.onStart([]() {
+    Serial.println("Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+  ArduinoOTA.begin(); 
   wifi_connect();
   client.setServer(MQTT_ADDRESS, MQTT_PORT);
   mqtt_reconnect();
@@ -70,6 +97,8 @@ void mqtt_reconnect() {
 
 
 void loop() {
+  MDNS.update();
+  ArduinoOTA.handle();
   humidityLevel = analogRead(0);
   waterLevel = 1 - digitalRead(WATER_SENSOR_PIN);
 
